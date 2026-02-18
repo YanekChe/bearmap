@@ -38,6 +38,16 @@ Then open the printed Network URL (e.g. `http://192.168.x.x:5173`).
 - **Report** lets you create a `sighting` or `sign` with an optional note.
 - Pins are stored in `localStorage` (device-only).
 
+## Backend (Supabase)
+BearMap uses Supabase for shared pins across devices.
+
+Setup steps (project owner):
+1) In Supabase Auth settings, enable **Anonymous sign-ins**.
+2) Run `supabase/schema.sql` in the SQL editor.
+3) Configure build env vars:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
 ## Safety & privacy (planned)
 - Stored locations will be **quantized/blurred** before sharing.
 - Reports will be **time-bounded** (wildlife moves).

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Circle, CircleMarker, MapContainer, Marker, TileLayer, useMap, ZoomControl } from 'react-leaflet'
+import { Circle, CircleMarker, MapContainer, Marker, TileLayer, useMap, useMapEvents, ZoomControl } from 'react-leaflet'
 import './App.css'
 import { installLeafletDefaultIconFix } from './lib/leafletIconFix'
 import type { BearReport, ReportKind } from './lib/types'
 import { loadReports, saveReports } from './lib/storage'
+import { ensureSignedInAnonymously, fetchReports, insertReport } from './lib/backend'
+import { hasSupabase } from './lib/supabase'
 
 installLeafletDefaultIconFix()
 
@@ -53,25 +55,91 @@ function MapRecenter({ lat, lng }: { lat: number; lng: number }) {
   return null
 }
 
+function BoundsWatcher({
+  onChange,
+}: {
+  onChange: (b: { minLat: number; maxLat: number; minLng: number; maxLng: number }) => void
+}) {
+  const map = useMapEvents({
+    moveend: () => {
+      const b = map.getBounds()
+      onChange({
+        minLat: b.getSouth(),
+        maxLat: b.getNorth(),
+        minLng: b.getWest(),
+        maxLng: b.getEast(),
+      })
+    },
+    zoomend: () => {
+      const b = map.getBounds()
+      onChange({
+        minLat: b.getSouth(),
+        maxLat: b.getNorth(),
+        minLng: b.getWest(),
+        maxLng: b.getEast(),
+      })
+    },
+  })
+
+  // Initialize once
+  useEffect(() => {
+    const b = map.getBounds()
+    onChange({
+      minLat: b.getSouth(),
+      maxLat: b.getNorth(),
+      minLng: b.getWest(),
+      maxLng: b.getEast(),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return null
+}
+
 export default function App() {
   const [geoStatus, setGeoStatus] = useState<'idle' | 'requesting' | 'ok' | 'denied' | 'error'>('idle')
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
   const [reports, setReports] = useState<BearReport[]>(() => loadReports())
+  const [backendStatus, setBackendStatus] = useState<'off' | 'connecting' | 'on' | 'error'>
+    (hasSupabase() ? 'connecting' : 'off')
 
   const [reportOpen, setReportOpen] = useState(false)
   const [reportKind, setReportKind] = useState<ReportKind>('sighting')
   const [reportNote, setReportNote] = useState('')
 
   // Viewer safety radius (distance from you)
-  const radiusOptionsFt = [100, 200, 500, 1320] // 0.25mi
-  const [radiusFt, setRadiusFt] = useState<number>(200)
+  const radiusOptionsFt = [500, 1000, 1320, 2640] // 0.25mi, 0.5mi
+  const [radiusFt, setRadiusFt] = useState<number>(500)
 
   // Show recents only after selecting a pin.
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  const [bounds, setBounds] = useState<{ minLat: number; maxLat: number; minLng: number; maxLng: number } | null>(
+    null,
+  )
+
   useEffect(() => {
     saveReports(reports)
   }, [reports])
+
+  useEffect(() => {
+    if (!hasSupabase()) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        setBackendStatus('connecting')
+        await ensureSignedInAnonymously()
+        if (!cancelled) setBackendStatus('on')
+      } catch {
+        if (!cancelled) setBackendStatus('error')
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const sortedReports = useMemo(
     () => [...reports].sort((a, b) => b.createdAt - a.createdAt),
@@ -109,11 +177,45 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (backendStatus !== 'on') return
+    if (!bounds) return
+
+    let cancelled = false
+
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    ;(async () => {
+      try {
+        const remote = await fetchReports({
+          ...bounds,
+          sinceIso: since,
+          limit: 200,
+        })
+        if (cancelled) return
+
+        // Merge remote into local (prefer remote by id).
+        setReports((prev) => {
+          const byId = new Map(prev.map((r) => [r.id, r]))
+          for (const r of remote) byId.set(r.id, r)
+          return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt)
+        })
+      } catch {
+        // ignore
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [backendStatus, bounds])
+
   const canReport = geoStatus === 'ok' && !!pos
 
-  const submitReport = () => {
+  const submitReport = async () => {
     if (!pos) return
-    const r: BearReport = {
+
+    const localDraft: BearReport = {
       id: uuid(),
       kind: reportKind,
       note: reportNote.trim() || undefined,
@@ -121,8 +223,30 @@ export default function App() {
       lng: pos.lng,
       createdAt: Date.now(),
     }
-    setReports((prev) => [r, ...prev])
-    setSelectedId(r.id)
+
+    // Optimistic local update.
+    setReports((prev) => [localDraft, ...prev])
+    setSelectedId(localDraft.id)
+
+    try {
+      if (backendStatus === 'on') {
+        const inserted = await insertReport({
+          kind: localDraft.kind,
+          note: localDraft.note,
+          lat: localDraft.lat,
+          lng: localDraft.lng,
+          createdAt: localDraft.createdAt,
+        })
+        if (inserted) {
+          // Replace optimistic draft with server row (id).
+          setReports((prev) => prev.map((r) => (r.id === localDraft.id ? inserted : r)))
+          setSelectedId(inserted.id)
+        }
+      }
+    } catch {
+      // Leave the local pin; backend retry can come later.
+    }
+
     setReportNote('')
     setReportKind('sighting')
     setReportOpen(false)
@@ -146,6 +270,7 @@ export default function App() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <ZoomControl position="bottomright" />
+          <BoundsWatcher onChange={setBounds} />
 
           {pos && (
             <>
