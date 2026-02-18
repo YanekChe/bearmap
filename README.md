@@ -42,9 +42,11 @@ Then open the printed Network URL (e.g. `http://192.168.x.x:5173`).
 BearMap uses Supabase for shared pins across devices.
 
 Setup steps (project owner):
-1) In Supabase Auth settings, enable **Anonymous sign-ins**.
-2) Run `supabase/schema.sql` in the SQL editor.
-3) Configure build env vars:
+1) In Supabase Auth settings, enable **Email provider** (magic link / OTP).
+2) Add Redirect URLs:
+   - `https://yanekche.github.io/bearmap/`
+3) Run `supabase/schema.sql` in the SQL editor.
+4) Configure build env vars:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
 

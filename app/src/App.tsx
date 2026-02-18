@@ -4,7 +4,7 @@ import './App.css'
 import { installLeafletDefaultIconFix } from './lib/leafletIconFix'
 import type { BearReport, ReportKind } from './lib/types'
 import { loadReports, saveReports } from './lib/storage'
-import { ensureSignedInAnonymously, fetchReports, insertReport } from './lib/backend'
+import { fetchReports, getSession, insertReport, sendMagicLink, signOut } from './lib/backend'
 import { hasSupabase } from './lib/supabase'
 
 installLeafletDefaultIconFix()
@@ -100,8 +100,12 @@ export default function App() {
   const [geoStatus, setGeoStatus] = useState<'idle' | 'requesting' | 'ok' | 'denied' | 'error'>('idle')
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
   const [reports, setReports] = useState<BearReport[]>(() => loadReports())
-  const [backendStatus, setBackendStatus] = useState<'off' | 'connecting' | 'on' | 'error'>
+  const [backendStatus, setBackendStatus] = useState<'off' | 'connecting' | 'auth' | 'on' | 'error'>
     (hasSupabase() ? 'connecting' : 'off')
+
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authEmail, setAuthEmail] = useState<string>(() => localStorage.getItem('bearmap.auth.email') ?? '')
+  const [authSent, setAuthSent] = useState(false)
 
   const [reportOpen, setReportOpen] = useState(false)
   const [reportKind, setReportKind] = useState<ReportKind>('sighting')
@@ -129,8 +133,16 @@ export default function App() {
     ;(async () => {
       try {
         setBackendStatus('connecting')
-        await ensureSignedInAnonymously()
-        if (!cancelled) setBackendStatus('on')
+        const session = await getSession()
+        if (cancelled) return
+
+        if (session) {
+          setBackendStatus('on')
+          return
+        }
+
+        setBackendStatus('auth')
+        setAuthOpen(true)
       } catch {
         if (!cancelled) setBackendStatus('error')
       }
@@ -212,6 +224,30 @@ export default function App() {
 
   const canReport = geoStatus === 'ok' && !!pos
 
+  const submitAuth = async () => {
+    const email = authEmail.trim()
+    if (!email) return
+
+    localStorage.setItem('bearmap.auth.email', email)
+
+    try {
+      await sendMagicLink(email)
+      setAuthSent(true)
+    } catch {
+      // keep modal open; user can retry
+    }
+  }
+
+  const doSignOut = async () => {
+    try {
+      await signOut()
+    } finally {
+      setBackendStatus('auth')
+      setAuthOpen(true)
+      setAuthSent(false)
+    }
+  }
+
   const submitReport = async () => {
     if (!pos) return
 
@@ -260,6 +296,12 @@ export default function App() {
       </header>
 
       <main className="main">
+        {hasSupabase() && (
+          <div className="statusPill">
+            Backend: {backendStatus === 'on' ? 'on' : backendStatus === 'auth' ? 'sign-in' : backendStatus}
+          </div>
+        )}
+
         <MapContainer
           className="map"
           center={[pos?.lat ?? 37.0902, pos?.lng ?? -95.7129]}
@@ -308,6 +350,12 @@ export default function App() {
             {geoStatus === 'requesting' ? 'Locating…' : 'My location'}
           </button>
 
+          {backendStatus === 'on' && (
+            <button className="btn" type="button" onClick={doSignOut}>
+              Sign out
+            </button>
+          )}
+
           <button
             className="btn"
             type="button"
@@ -322,7 +370,19 @@ export default function App() {
             Radius: {radiusFt >= 5280 ? `${(radiusFt / 5280).toFixed(2)} mi` : `${radiusFt} ft`}
           </button>
 
-          <button className="btn" type="button" onClick={() => setReportOpen(true)} disabled={!canReport}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              if (backendStatus === 'auth') {
+                setAuthOpen(true)
+                return
+              }
+              setReportOpen(true)
+            }}
+            disabled={!canReport}
+            title={backendStatus === 'auth' ? 'Sign in to share pins' : undefined}
+          >
             Report
           </button>
         </div>
@@ -330,6 +390,44 @@ export default function App() {
         {geoStatus === 'denied' && (
           <div className="banner">
             Location permission denied. Enable it in Safari settings to show your area.
+          </div>
+        )}
+
+        {authOpen && (
+          <div className="modalBackdrop" role="presentation" onClick={() => setAuthOpen(false)}>
+            <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <div className="modalTitle">Sign in</div>
+
+              <div className="hint">
+                Enter your email and we’ll send a magic link. After you open the link, come back here.
+              </div>
+
+              <label className="field">
+                <div className="label">Email</div>
+                <input
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  inputMode="email"
+                  autoComplete="email"
+                />
+              </label>
+
+              <div className="modalActions">
+                <button className="btn" type="button" onClick={() => setAuthOpen(false)}>
+                  Not now
+                </button>
+                <button className="btn primary" type="button" onClick={submitAuth} disabled={!authEmail.trim()}>
+                  Send link
+                </button>
+              </div>
+
+              {authSent && (
+                <div className="hint">
+                  Link sent. Check your email, open the magic link, then reload this page.
+                </div>
+              )}
+            </div>
           </div>
         )}
 

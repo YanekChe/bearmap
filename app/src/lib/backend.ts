@@ -10,13 +10,31 @@ export type FetchReportsArgs = {
   limit?: number
 }
 
-export async function ensureSignedInAnonymously() {
-  if (!supabase) return
+export async function getSession() {
+  if (!supabase) return null
   const { data } = await supabase.auth.getSession()
-  if (data.session) return
+  return data.session ?? null
+}
 
-  // Anonymous auth (no email) — requires it enabled in Supabase Auth settings.
-  const { error } = await supabase.auth.signInAnonymously()
+export async function sendMagicLink(email: string) {
+  if (!supabase) return
+
+  // Ensure redirect stays under the GitHub Pages base path.
+  const baseUrl = `${window.location.origin}${import.meta.env.BASE_URL}`
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: baseUrl,
+    },
+  })
+
+  if (error) throw error
+}
+
+export async function signOut() {
+  if (!supabase) return
+  const { error } = await supabase.auth.signOut()
   if (error) throw error
 }
 

@@ -152,13 +152,29 @@
   opacity: 0.8;
 }
 
-textarea {
+textarea,
+input {
   width: 100%;
   border-radius: 14px;
   border: 3px solid #1b1b1b;
   padding: 10px 12px;
   font: inherit;
   resize: vertical;
+}
+
+.statusPill {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1500;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 3px solid #1b1b1b;
+  background: #fff;
+  box-shadow: 3px 3px 0 #1b1b1b;
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.9;
 }
 
 .modalActions {
