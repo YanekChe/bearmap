@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CircleMarker, MapContainer, Marker, TileLayer, useMap, ZoomControl } from 'react-leaflet'
+import { Circle, CircleMarker, MapContainer, Marker, TileLayer, useMap, ZoomControl } from 'react-leaflet'
 import './App.css'
 import { installLeafletDefaultIconFix } from './lib/leafletIconFix'
 import type { BearReport, ReportKind } from './lib/types'
@@ -22,6 +22,28 @@ function formatAge(ms: number) {
   return `${d}d ago`
 }
 
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371000
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+  const s1 = Math.sin(dLat / 2)
+  const s2 = Math.sin(dLng / 2)
+  const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+function formatDistance(meters: number) {
+  // Prefer feet for close distances (US hiking vibe), then miles.
+  const feet = meters * 3.28084
+  if (feet < 1000) return `~${Math.round(feet)} ft`
+  const miles = feet / 5280
+  if (miles < 10) return `~${miles.toFixed(1)} mi`
+  return `~${Math.round(miles)} mi`
+}
+
 function MapRecenter({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap()
   useEffect(() => {
@@ -39,6 +61,10 @@ export default function App() {
   const [reportOpen, setReportOpen] = useState(false)
   const [reportKind, setReportKind] = useState<ReportKind>('sighting')
   const [reportNote, setReportNote] = useState('')
+
+  // Viewer safety radius (distance from you)
+  const radiusOptionsFt = [100, 200, 500, 1320] // 0.25mi
+  const [radiusFt, setRadiusFt] = useState<number>(200)
 
   useEffect(() => {
     saveReports(reports)
@@ -115,6 +141,15 @@ export default function App() {
           {pos && (
             <>
               <MapRecenter lat={pos.lat} lng={pos.lng} />
+
+              {/* Safety radius around viewer */}
+              <Circle
+                center={[pos.lat, pos.lng]}
+                radius={(radiusFt / 3.28084)}
+                pathOptions={{ color: '#1b1b1b', weight: 2, fillColor: '#1b1b1b', fillOpacity: 0.08 }}
+              />
+
+              {/* Your location */}
               <CircleMarker
                 center={[pos.lat, pos.lng]}
                 radius={8}
@@ -132,6 +167,21 @@ export default function App() {
           <button className="btn" type="button" onClick={requestLocation}>
             {geoStatus === 'requesting' ? 'Locating…' : 'My location'}
           </button>
+
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              const idx = radiusOptionsFt.indexOf(radiusFt)
+              const next = radiusOptionsFt[(idx + 1) % radiusOptionsFt.length] ?? radiusOptionsFt[0]
+              setRadiusFt(next)
+            }}
+            disabled={!pos}
+            title="Safety radius around you"
+          >
+            Radius: {radiusFt >= 5280 ? `${(radiusFt / 5280).toFixed(2)} mi` : `${radiusFt} ft`}
+          </button>
+
           <button className="btn" type="button" onClick={() => setReportOpen(true)} disabled={!canReport}>
             Report
           </button>
@@ -197,7 +247,10 @@ export default function App() {
                 <div key={r.id} className="row">
                   <div className="rowMain">
                     <div className="rowKind">{r.kind === 'sighting' ? 'Bear sighting' : 'Bear sign'}</div>
-                    <div className="rowMeta">{formatAge(Date.now() - r.createdAt)}</div>
+                    <div className="rowMeta">
+                      {formatAge(Date.now() - r.createdAt)}
+                      {pos ? ` • ${formatDistance(haversineMeters(pos, { lat: r.lat, lng: r.lng }))}` : ''}
+                    </div>
                   </div>
                   {r.note && <div className="rowNote">{r.note}</div>}
                 </div>
