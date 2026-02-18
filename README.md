@@ -2,7 +2,14 @@
 
 Standalone **sketch-style** PWA for hikers to report **bear sightings / sign** and for others to view **recent wildlife hazards** near an area.
 
-This repo is intentionally simple and open-source.
+This repo is intentionally simple and open-source **for the engine/code**.
+
+## Open-source vs design (important)
+- **Code/engine**: MIT (see `LICENSE`).
+- **Design assets / sketches / branding** in `assets/**`: **All Rights Reserved** (see `DESIGN_LICENSE.md`).
+- No trademark rights are granted to the name/logo (see `TRADEMARK.md`).
+
+If you want to build on the engine, please fork it and use your own branding and visual design.
 
 ## Status
 - Early MVP: Leaflet map + geolocation + local-only report pins.
