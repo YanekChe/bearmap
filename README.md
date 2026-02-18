@@ -1,44 +1,45 @@
 # BearMap (PWA)
 
-Standalone PWA for hikers to report **bear sightings / sign** and for others to view **recent wildlife hazard** near an area or planned route.
+Standalone **sketch-style** PWA for hikers to report **bear sightings / sign** and for others to view **recent wildlife hazards** near an area.
 
-This folder is the project scratchpad/spec for now.
+This repo is intentionally simple and open-source.
 
-## Product goals
-- Fast, low-friction reporting in the field.
-- Make reports **time-bounded** (wildlife moves).
-- Protect wildlife + people via **privacy + location blurring**.
-- Useful “near my route / near me” warnings.
+## Status
+- Early MVP: Leaflet map + geolocation + local-only report pins.
+- Next: approximate/blurred location storage + sharing backend.
 
-## MVP (first ship)
-**Report**
-- Drop pin (GPS + manual adjust)
-- Type: `Bear sighting` vs `Bear sign` (tracks/scat/scratches)
-- Optional note + optional photo
-- Auto timestamp
+## Run locally
+Requirements: Node + npm
 
-**View**
-- Map with clustered pins
-- Filters: last 24h / 7d, sighting vs sign
-- Detail sheet: age, approx distance, note/photo (if provided)
+```bash
+cd app
+npm install
+npm run dev
+```
 
-**Safety + privacy defaults**
-- Location is **quantized** (e.g. 300–500m grid) before storing.
-- Reports auto-expire (e.g. high relevance 24h; visible 7d).
-- Anonymous by default; no public user identity.
+Then open:
+- http://localhost:5173
 
-## Next features (post-MVP)
-- Route-aware alerts (“X reports within Y miles of your route”) via uploaded GPX.
-- Confirmations: “I saw this too” / “area seems clear now” (with throttling).
-- Reputation + rate limiting.
-- Offline cache + queued submit.
-- Push notifications (optional).
+To test on your phone (same Wi‑Fi):
+```bash
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+Then open the printed Network URL (e.g. `http://192.168.x.x:5173`).
 
-## Tech constraints (PWA)
-- Must work with spotty service.
-- Must degrade gracefully without precise location permissions.
+## MVP behavior (current)
+- App requests GPS and centers the map on you.
+- **Report** lets you create a `sighting` or `sign` with an optional note.
+- Pins are stored in `localStorage` (device-only).
+
+## Safety & privacy (planned)
+- Stored locations will be **quantized/blurred** before sharing.
+- Reports will be **time-bounded** (wildlife moves).
 
 See:
-- `SPEC.md` for detailed requirements
-- `DATA_MODEL.md` for proposed schema
-- `BACKLOG.md` for tasks
+- `SPEC.md` – product spec
+- `STYLE_GUIDE.md` – sketch aesthetic (printed text)
+- `DATA_MODEL.md` – proposed schema/API
+- `BACKLOG.md` – tasks
+
+## License
+MIT — see `LICENSE`.
