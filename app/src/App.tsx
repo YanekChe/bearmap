@@ -66,6 +66,9 @@ export default function App() {
   const radiusOptionsFt = [100, 200, 500, 1320] // 0.25mi
   const [radiusFt, setRadiusFt] = useState<number>(200)
 
+  // Show recents only after selecting a pin.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
   useEffect(() => {
     saveReports(reports)
   }, [reports])
@@ -73,6 +76,11 @@ export default function App() {
   const sortedReports = useMemo(
     () => [...reports].sort((a, b) => b.createdAt - a.createdAt),
     [reports],
+  )
+
+  const selectedReport = useMemo(
+    () => (selectedId ? reports.find((r) => r.id === selectedId) ?? null : null),
+    [reports, selectedId],
   )
 
   const requestLocation = () => {
@@ -114,6 +122,7 @@ export default function App() {
       createdAt: Date.now(),
     }
     setReports((prev) => [r, ...prev])
+    setSelectedId(r.id)
     setReportNote('')
     setReportKind('sighting')
     setReportOpen(false)
@@ -159,7 +168,13 @@ export default function App() {
           )}
 
           {sortedReports.map((r) => (
-            <Marker key={r.id} position={[r.lat, r.lng]} />
+            <Marker
+              key={r.id}
+              position={[r.lat, r.lng]}
+              eventHandlers={{
+                click: () => setSelectedId(r.id),
+              }}
+            />
           ))}
         </MapContainer>
 
@@ -239,22 +254,27 @@ export default function App() {
           </div>
         )}
 
-        {sortedReports.length > 0 && (
-          <div className="sheet">
-            <div className="sheetTitle">Recent</div>
+        {selectedReport && (
+          <div className="sheet" role="button" tabIndex={0} onClick={() => setSelectedId(null)}>
+            <div className="sheetTitle">Selected</div>
             <div className="sheetList">
-              {sortedReports.slice(0, 5).map((r) => (
-                <div key={r.id} className="row">
-                  <div className="rowMain">
-                    <div className="rowKind">{r.kind === 'sighting' ? 'Bear sighting' : 'Bear sign'}</div>
-                    <div className="rowMeta">
-                      {formatAge(Date.now() - r.createdAt)}
-                      {pos ? ` • ${formatDistance(haversineMeters(pos, { lat: r.lat, lng: r.lng }))}` : ''}
-                    </div>
+              <div className="row">
+                <div className="rowMain">
+                  <div className="rowKind">
+                    {selectedReport.kind === 'sighting' ? 'Bear sighting' : 'Bear sign'}
                   </div>
-                  {r.note && <div className="rowNote">{r.note}</div>}
+                  <div className="rowMeta">
+                    {formatAge(Date.now() - selectedReport.createdAt)}
+                    {pos
+                      ? ` • ${formatDistance(
+                          haversineMeters(pos, { lat: selectedReport.lat, lng: selectedReport.lng }),
+                        )}`
+                      : ''}
+                  </div>
                 </div>
-              ))}
+                {selectedReport.note && <div className="rowNote">{selectedReport.note}</div>}
+                <div className="hint">Tap this card to close.</div>
+              </div>
             </div>
           </div>
         )}
