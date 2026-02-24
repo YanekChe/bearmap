@@ -106,6 +106,8 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false)
   const [authEmail, setAuthEmail] = useState<string>(() => localStorage.getItem('bearmap.auth.email') ?? '')
   const [authSent, setAuthSent] = useState(false)
+  const [authSending, setAuthSending] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   const [reportOpen, setReportOpen] = useState(false)
   const [reportKind, setReportKind] = useState<ReportKind>('sighting')
@@ -230,11 +232,18 @@ export default function App() {
 
     localStorage.setItem('bearmap.auth.email', email)
 
+    setAuthError(null)
+    setAuthSending(true)
+
     try {
       await sendMagicLink(email)
       setAuthSent(true)
-    } catch {
-      // keep modal open; user can retry
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setAuthError(msg)
+      console.error('sendMagicLink failed', err)
+    } finally {
+      setAuthSending(false)
     }
   }
 
@@ -417,10 +426,21 @@ export default function App() {
                 <button className="btn" type="button" onClick={() => setAuthOpen(false)}>
                   Not now
                 </button>
-                <button className="btn primary" type="button" onClick={submitAuth} disabled={!authEmail.trim()}>
-                  Send link
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={submitAuth}
+                  disabled={!authEmail.trim() || authSending}
+                >
+                  {authSending ? 'Sending…' : 'Send link'}
                 </button>
               </div>
+
+              {authError && (
+                <div className="hint" style={{ color: '#b00020' }}>
+                  Sign-in failed: {authError}
+                </div>
+              )}
 
               {authSent && (
                 <div className="hint">
